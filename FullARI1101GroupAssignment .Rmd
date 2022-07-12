@@ -1,0 +1,634 @@
+---
+title: "ARI1101 Group Assignment"
+author: Kian Parnis and Evangeline Azzopardi
+date: 22nd January 2021
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Task 1: Understanding the data
+
+The variables for data-rental.csv are classified as follows:
+
+Continuous Quantitative variables: 
+
++   house_price
++   bedrooms
++   surface
+
+Discrete Qualitative variables: 
+
++   rental_agency 
++   city
+
+### Statistical Analysis Methods
+
+#### Pre-Cleaning Analysis
+
+Before performing any analysis the distribution of the quantitative variables was calculated to determine the skewness of the data and its effect on the results obtained during the analysis.
+
+```{r}
+preCleanedRent <- read.csv(file = 'data-rental.csv')
+
+priceMean<-mean(preCleanedRent$house_price, na.rm = TRUE)#1423.65
+priceMean
+priceSD<-sd(preCleanedRent$house_price, na.rm = TRUE)#748.99
+priceSD
+normDistPrice<-dnorm(preCleanedRent$house_price, 1423.65, 748.99)
+plot(preCleanedRent$house_price, normDistPrice, 
+     main = "A plot of Price VS the Distribution of Price",
+     xlab = "Price",
+     ylab = "Distribution of Price")
+
+areaMean<-mean(preCleanedRent$surface, na.rm = TRUE)#77.38945
+areaMean
+areaSD<-sd(preCleanedRent$surface, na.rm = TRUE)#48.34938
+areaSD
+normDistSArea<-dnorm(preCleanedRent$surface, 77.38945, 48.34938)
+plot(preCleanedRent$surface, normDistSArea,
+     main = "A plot of Surface Area VS the Distribution of Surface Area",
+     xlab = "Surface Area",
+     ylab = "Distribution of Surface Area")
+
+roomsMean<-mean(preCleanedRent$bedrooms, na.rm = TRUE)#2.770552
+roomsMean
+roomsSD<-sd(preCleanedRent$bedrooms, na.rm = TRUE)#1.347051
+roomsSD
+normDistBRooms<-dnorm(preCleanedRent$bedrooms, 2.770552, 1.347051)
+plot(preCleanedRent$bedrooms, normDistBRooms,
+     main = "A plot of Bedrooms VS the Distribution of Bedrooms",
+     xlab = "Bedrooms",
+     ylab = "Distribution of Bedrooms")
+
+```
+As can be seen in the plots above, the quantitative data is positively skewed with the majority of the values clustered to the left with a longer right tail. Due to the skewness of the data, for certain parts of Task 3, a sample will be used to minimise the positive skewness of the data. 
+
+#### Correlation
+
+The variables which could be considered in measuring the correlations are as follows:
+
++   house_price VS city.
++   house_price VS bedrooms VS surface.
++   house_price VS surface.
++   city VS bedrooms VS surface.
++   bedrooms VS surface.
++   rental_agency VS city.
+
+The variables chosen for our analysis of the correlation are:
+
++   house_price VS surface.
++   house_price VS bedrooms.
++   surface VS bedrooms.
+
+
+#### Regression
+
+Regression, through the creation of a linear model which further measures the relationship between the variables, will be applied to make predictions for said variables.  
+
+#### Sampling Methods
+
+The sampling method chosen for our analysis is systematic sampling, as it eliminates any bias when creating the sample.
+This will applied by using the sample_n() function in the dplyr library.
+The population will be divided by 3, after cleaning, to produce a sample as required by Task 2.3 and will be used to find the sample means and to create a heatmap to show the relationship between the location of a property and its price.
+
+The distribution of the quantitative variables in the sample population for Task 3 was re-calculated and resulted in the data being less positively skewed, however the skewness was not eliminated entirely. Hence, it still influenced the results obtained in our analysis.
+
+## Task 2: Cleaning the data
+
+### Duplicated rows
+
+The library __tidyverse__ and __dplyr__ were primarily used for cleaning the data, they help to transform the data set with ease and __%>% filter()__ was commonly used throughout the cleaning process.
+
+```{r, echo=FALSE, message=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(gridExtra)
+require(gridExtra)
+library(survey)
+library(RColorBrewer)
+library(magrittr) #needs to be run every time to use %>%
+
+```
+
+
+The first part of cleaning involved identify and inspecting any identical rows in the data set, this was achieved with __duplicated()__ which displays if any duplicates are present and which rows they occur in.
+Afterwards __unique()__ was used to add every unique row to the new data set, since data was removed the row numbers were reset and __duplicated()__ is used again to validate succession.
+
+
+```{r}
+Rent <- read.csv(file = 'data-rental.csv')
+
+which(duplicated(Rent))
+Rent <- unique(Rent)
+row.names(Rent) <- NULL #Reset row numbers
+which(duplicated(Rent))
+
+```
+### Numerical Check
+
+Afterwards __is.numeric__ was used to go through all the rows. 
+
+```{r}
+Rent_num <- unlist(lapply(Rent, is.numeric))
+Rent_num
+
+```
+### Missing Values
+
+N/A's were taken into consideration and __is.na()__ was used to locate any missing values in the data set, only house_price was found to contain missing values so imputation was required. 
+
+```{r}
+x <- which(is.na(Rent))
+print(Rent[x, ])
+```
+
+When dealing with missing data a general format was followed in order for these values to be filled in.
+This format's intent was to look at the data set and impute data based on similar records in the set.
+
+Data was organized based off the rental agency column for better understanding on what decisions to take in the process and this is split into three categories:
+
++   *All Rental N/A*, which is when agency is filtered and all the agency's prices aren't present.
++   *!All Rental N/A*, which has agencies present with both missing and present prices.
++   *Appears once*, Agencies that only appear once with one NA value.
+
+The format starts off with filtering out N/A values, per agency based on city, bedrooms and surface area.
+In the likelihood that no other data is present with the three variables another filter is done but with city being excluded and again if no other data is found then only the bedrooms are filtered.
+
+When multiple occurrences of similar data was found,  __mean()__ was used to get an average of them and impute N/A's.
+If only one other row was found then its price iwas simply copied to replace the N/A value.
+
+
+```{r}
+#All Rental NA
+Rent %>% filter(rental_agency=="BED'R Apartments")
+Rent %>% filter(city=="Groningen", bedrooms==3, surface==50)
+Rent$house_price[86] <- 1000
+v <- Rent %>% filter(city=="Groningen", bedrooms==2, surface==55)
+Rent$house_price[484] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(city=="Groningen", bedrooms==1, surface==30)
+Rent$house_price[589] <- 850
+Rent %>% filter(city=="Groningen", bedrooms==2, surface==30)
+v <- Rent %>% filter(bedrooms==2, surface==30)
+Rent$house_price[638] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(city=="Groningen", bedrooms==2, surface==50)
+v <- Rent %>% filter(city=="Groningen", bedrooms==2, surface==50)
+Rent$house_price[690] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="Short Stay Group B.V.")
+v <- Rent %>% filter(city=="Amsterdam", bedrooms==3, surface==83)
+Rent$house_price[9212] <- mean(v$house_price, na.rm=TRUE)
+v <- Rent %>% filter(city=="Amsterdam", bedrooms==2, surface==45)
+Rent$house_price[9215] <- mean(v$house_price, na.rm=TRUE)
+v <- Rent %>% filter(city=="Amsterdam", bedrooms==2, surface==70)
+Rent$house_price[9216] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="Staffhousing Services B.V.")
+Rent %>% filter(city=="Pernis Rotterdam", bedrooms==5, surface==100)
+v <- Rent %>% filter(bedrooms==5, surface==100)
+Rent$house_price[5821] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(city=="Hoorn", bedrooms==5, surface==103)
+v <- Rent %>% filter(bedrooms==5, surface==103)
+Rent$house_price[5833] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(city=="Lelystad", bedrooms==5, surface==135)
+Rent$house_price[6202] <- 1850
+
+#!All Rental NA
+Rent %>% filter(rental_agency=="Fransen Vastgoed")
+Rent %>% filter(bedrooms==6, surface==142)
+Rent$house_price[1203] <- 2450
+v <- Rent %>% filter(bedrooms==5, surface==85)
+Rent$house_price[5879] <- mean(v$house_price, na.rm=TRUE)
+v <- Rent %>% filter(bedrooms==5, surface==136)
+Rent$house_price[5881] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(city=="Maassluis", bedrooms==4, surface==75)
+v <- Rent %>% filter(bedrooms==4, surface==75)
+Rent$house_price[8485] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="Stam Vastgoed")
+v <- Rent %>% filter(bedrooms==1, surface==50)
+Rent$house_price[8852] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="Havos Vastgoedbelegging bv")
+Rent %>% filter(bedrooms==10) ##
+Rent$house_price[2182] <- 1650
+Rent %>% filter(rental_agency=="Comfortable Staff Housing")
+Rent %>% filter(bedrooms==8) ##
+Rent$house_price[2429] <- 3950
+Rent %>% filter(rental_agency=="Expat Group")
+v <- Rent %>% filter(bedrooms==6, surface==150)
+Rent$house_price[4659] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="AB&P Vaassen")
+Rent %>% filter(bedrooms==10) ##
+Rent$house_price[8082] <- 5000
+Rent$house_price[8083] <- 4000
+v <- Rent %>% filter(bedrooms==4, surface==90)
+Rent$house_price[8837] <- mean(v$house_price, na.rm=TRUE)
+v <- Rent %>% filter(bedrooms==6, surface==118)
+Rent$house_price[8919] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="123Wonen Flevoland")
+v <- Rent %>% filter(bedrooms==2, surface==56)
+Rent$house_price[9167] <- mean(v$house_price, na.rm=TRUE)
+
+#Appears once
+Rent %>% filter(rental_agency=="Makelaarskantoor Paul Schreinemachers")
+Rent %>% filter(city=="Venlo", bedrooms==2, surface==28)
+v = Rent %>% filter(bedrooms==2, surface==28)
+Rent$house_price[2728] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="vastgoedPROmakelaar.nl")
+Rent %>% filter(city=="Weert", bedrooms==4, surface==85)
+v = Rent %>% filter(bedrooms==4, surface==85)
+Rent$house_price[4360] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="Huijers Vastgoed Makelaardij")
+Rent %>% filter(city=="Weert", bedrooms==4, surface==135)
+v = Rent %>% filter(bedrooms==4, surface==135)
+Rent$house_price[7943] <- mean(v$house_price, na.rm=TRUE)
+Rent %>% filter(rental_agency=="Gerro de Boer Makelaardij & Taxaties o.g.") 
+head(Rent %>% filter(bedrooms==6))
+Rent$house_price[8520] <- 4500
+Rent %>% filter(rental_agency=="NL en Wonen")
+v <- Rent %>% filter(bedrooms==5, surface==144)
+Rent$house_price[7617] <- mean(v$house_price, na.rm=TRUE)
+```
+
+Two N/As were omitted from the data set, this is due to the data not having any similarities with other data and this is due to both having a large number of bedrooms and not being able to be imputed.
+
+```{r}
+Rent %>% filter(rental_agency=="Grand Prix Rentals")
+Rent %>% filter(bedrooms==9) 
+Rent <- Rent[-c(8037), ]
+row.names(Rent) <- NULL
+
+Rent %>% filter(rental_agency=="NL en Wonen")
+Rent %>% filter(surface==360)
+Rent <- Rent[-c(7616), ]
+row.names(Rent) <- NULL
+
+x <- which(is.na(Rent))
+Rent[x, ]
+```
+
+## Task 3: Data Analysis
+### Sample Means
+
+After cleaning the data, a sample using systematic sampling was created. The sample means for the variables house_price, bedrooms and surface were calculated to produce the average values for a typical property. Below is the code to create a data frame with the cleaned data.
+
+```{r}
+##create a data frame
+housePrice<-c(Rent$house_price)
+rentalAgency<-c(Rent$rental_agency)
+cityLocation<-c(Rent$city)
+bedrooms<-c(Rent$bedrooms)
+surfaceArea<-c(Rent$surface)
+rentDataSet.data<-data.frame(housePrice, rentalAgency, cityLocation, bedrooms, surfaceArea)
+##str(rentDataSet.data)
+
+```
+
+After this the sample_n() function was used to create a sample from the population. 
+```{r}
+##Create sample from population
+##9717/3=3239
+sampleData = sample_n(rentDataSet.data, (nrow(rentDataSet.data)/3), FALSE)
+##print(sampleData)
+
+```
+
+The mean() function was applied to the previously mentioned variables to produce the average values, some of which are rounded to two decimal places. The code below demonstrates this. The results for the three sample mean values can be found below the related code.
+
+```{r}
+##Task 3 Part 1
+sampleMeanPrice = mean(sampleData$housePrice, na.rm = TRUE) 
+sampleMeanPrice<- round(sampleMeanPrice, digits=2)
+print(sampleMeanPrice)
+sampleMeanBedroom = mean(sampleData$bedrooms, na.rm = TRUE)
+sampleMeanBedroom<- round(sampleMeanBedroom, digits=0)
+print(sampleMeanBedroom)
+sampleMeanSurfaceArea = mean(sampleData$surfaceArea, na.rm = TRUE)
+sampleMeanSurfaceArea<- round(sampleMeanSurfaceArea, digits=2)
+print(sampleMeanSurfaceArea)
+```
+
+### Most Expensive / Cheapest
+
+To find the most expensive and cheapest cities, a data frame was created to store each unique city with the price per $m^{2}$.
+
+```{r}
+City <- NULL
+PriceperSqm <- NULL
+df <- data.frame(City, PriceperSqm)
+```
+
+To populate this data frame, both the names of cities and price per $m^{2}$ need to imputed and this is done with a for loop that goes over every unique city, filters the city inside test, calculates price per $m^{2}$ by doing $\frac{houseprice}{surface}$ for all rows of that city and finally calculating the mean of each price per $m^{2}$ per city, rounded to two decimal places, and populating the result alongside the city name in the new data set.
+
+```{r}
+for(i in unique(Rent$city)){
+  Test <- Rent %>% filter(city==i)
+  Test$PriceperSqmeter <- Test$house_price / Test$surface
+  PriceperSqm <- mean(Test$PriceperSqmeter, na.rm=TRUE)
+  PriceperSqm <- round(PriceperSqm, digits=3)
+  City <- i
+  new_row <- c(City, PriceperSqm) 
+  df <- rbind(df, new_row) 
+}
+names(df)[1]<-paste("City")
+names(df)[2]<-paste("PriceperSqm")
+head(df)
+```
+
+After the loop the column *PriceperSqm* was in a string format so **as.numeric** was used to transform the data to numerical ones, **max()** and **min()** were both used on the data frame to find the most expensive, the largest value, and the cheapest, the smallest value.
+
+```{r}
+is.numeric(df$PriceperSqm)
+df$PriceperSqm <- as.numeric(df$PriceperSqm)
+is.numeric(df$PriceperSqm)
+max <- df %>% filter(PriceperSqm==max(df$PriceperSqm))
+min <- df %>% filter(PriceperSqm==min(df$PriceperSqm))
+```
+
+With this implementation **Beinsdorp** was found to be the most expensive city, while **Wegenborgen** was the cheapest.
+
+```{r, echo=FALSE}
+print(message_1 <- paste("Most expensive: ",max$City, "," , max$PriceperSqm, "per m^2" ))
+print(message_2 <- paste("Cheapest: ",min$City, "," , min$PriceperSqm, "per m^2" ))
+
+```
+
+### Heatmap 
+
+Below is the code to create a data frame for the population, from which a sample of the population was created. A sample was used to create the heatmap because..... 
+
+```{r}
+##create a data frame
+housePriceHM<-c(Rent$house_price)
+rentalAgencyHM<-c(Rent$rental_agency)
+cityLocationHM<-c(Rent$city)
+bedroomsHM<-c(Rent$bedrooms)
+surfaceAreaHM<-c(Rent$surface)
+
+rentDataSetHM.data<-data.frame(housePriceHM, rentalAgencyHM, cityLocationHM, bedroomsHM, surfaceAreaHM)
+str(rentDataSetHM.data)
+
+##Create sample from population
+##9717/3=3239
+sampleDataHM = sample_n(rentDataSetHM.data, (nrow(rentDataSetHM.data)/3), FALSE)
+##head(sampleDataHM)
+##str(sampleDataHM)
+##table(sampleDataHM$housePriceHM)
+##table(sampleDataHM$cityLocationHM)
+
+```
+
+The variables location and house_price were separated, then bound and stored in a matrix to be passed as the data used by the heatmap. However, first the data for location was converted to a numeric equivalent using the factor() function, as matrices only accept numeric input which was necessary to create the heatmap. Secondly, the data was stored in the matrix in ascending order according to house_price.
+
+```{r}
+city<-factor(sampleDataHM$cityLocationHM)##locationFactor
+matrixPrice<-order(sampleDataHM$housePriceHM)#ascending
+price<-as.numeric(matrixPrice)
+heatMapMatrix<-cbind(city, price)
+##print(heatMapMatrix)
+
+##table(city)
+
+```
+
+The RColourBrewer library was used to generate the colours for the heatmap. It utilises the data consisting of location and house_price and shows the relationship between them. The variables are on the x-axis with the row numbers on the y-axis. Furthermore the the gradient of the colours spans from light to dark, with lighter colours representing the lower range of prices for a property according to location and darker colours representing more expensive properties.
+
+```{r}
+colouring<-colorRampPalette(brewer.pal(8,"BuPu"))(3239)
+
+##High values are dark, low values are light
+rentalHeatmap<-heatmap(heatMapMatrix,
+                       Colv = NA,
+                       #Rowv = NA,
+                       scale="none",
+                       col = colouring,
+                       xlab = "Variables: city, price",
+                       ylab = "Records",
+                       labCol = FALSE,
+                       main = "Heatmap for sample of rental-data.csv")
+
+```
+
+It is noted that the heatmap does contain some errors. The variable city would have ideally been on the y-axis instead of beside price on the x-axis. This occurred because of the lack of row names for each individual record in the data set and two columns of data were required to create the matrix used by heatmap().
+
+However the heatmap can be interpreted, it was concluded that there is a direct relationship between the price of a property and the city it is situated in.
+
+Some of most expensive cities, according to the sample, include:
+
++   Wassenaar
++   Amsterdam
++   Den Haag
++   Oirschot
++   Spijk
++   Maastricht
+
+Some of the cheaper cities, according to the sample, include:
+
++   Tilberg
++   Waardenburg
++   Onstwedde 
++   Eindhoven 
++   Gaanderen
++   Arnhem
+
+### Correlations
+
+To identify the correlation between the values, three scatter plots were created of all the numerical data compared against one another. **ggplot** was used to visualize the three scatter plots whilst **grid.arrage()** was used to put them all together.
+
+Apart from this the correlation co-efficiency was calculated using the **cor()**, rounded to 2 decimal places, and this was inserted into each scatter plot to give both a visual indication of each correlation while also a numerical one.
+
+```{r, warning=FALSE}
+corone <-cor(Rent$house_price, Rent$surface)
+corone <- round(corone, digits=2)
+messageone <- paste("Cor Coeff: ", corone)
+cortwo <- cor(Rent$bedrooms, Rent$surface)
+cortwo <- round(cortwo, digits=2)
+messagetwo <- paste("Corr Coeff: ", cortwo)
+
+corthree <- cor(Rent$house_price, Rent$bedrooms)
+corthree <- round(corthree, digits=2)
+messagethree <- paste("Corr Coeff: ", corthree)
+plot1 <- ggplot(Rent, aes(x=house_price, y=surface, messageone)) + geom_point()+
+  geom_smooth(method=lm, color="darkred") + ylim(0, 1000)+ annotate("text", x = 16500, y = 900, label = messageone,
+                                                                    colour = "darkred", fontface =2)
+plot2 <- ggplot(Rent, aes(x=house_price, y=bedrooms)) + geom_point()+
+  geom_smooth(method=lm, color="darkblue") + ylim(1, 10) + xlim(0, 10000)+ annotate("text", x = 9350, y = 9, label = messagetwo,
+                                                                                    colour = "darkblue", fontface =2)
+plot3 <- ggplot(Rent, aes(x=surface, y=bedrooms)) + geom_point()+
+  geom_smooth(method=lm, color="darkgreen") + ylim(0, 15) + xlim(0, 1000)+ annotate("text", x = 940, y = 14, label = messagethree,
+                                                                                    colour = "darkgreen", fontface =2)
+grid.arrange(plot1, plot2, plot3, ncol=1)
+
+```
+
+
+With this it was concluded that there is a positive relationship between the continuous quantitative variables.  *bedrooms vs surface* has the strongest correlation of 0.72 while *house_price vs surface* has the weakest out of the three with a moderate correlation of 0.55.
+
+### Distribution and Standard Deviation
+
+The distribution and standard deviation between Amsterdam and Rotterdam were identified with two histograms layered on one anther showing the difference between the two while the standard deviation was calculated for both and presented in the plot.
+
+The data set was filtered by the required cities and the standard deviation was calculated using **var()** which calculates the variance of the data and after the $$\sqrt{variance}$$ was found to get the standard deviation.
+
+```{r}
+Rotter <- Rent %>% filter(city=="Rotterdam")
+Amster <- Rent %>% filter(city=="Amsterdam")
+Varone <- var(Rotter$house_price)
+Stdevone <- sqrt(Varone)
+Stdevone <- round(Stdevone, digits=2)
+Vartwo<- var(Amster$house_price)
+Stdevtwo <- sqrt(Vartwo)
+Stdevtwo <- round(Stdevtwo, digits=2)
+message1 <- paste("StandDev: ", Stdevone)
+message2 <- paste("StandDev: ", Stdevtwo)
+```
+
+
+```{r}
+hist(Rotter$house_price, breaks=20, xlim=c(0,17500),ylim=c(0,650) , col=rgb(1,0,0,0.5), xlab="House Price", 
+     ylab="Count", main="Distribution of Price" ) 
+hist(Amster$house_price, breaks=80, xlim=c(0,17500),ylim=c(0,650), col=rgb(0,0,1,0.5), add=T)
+legend("topright", legend=c("Rotterdam",message1,"Amsterdam",message2), col=c(rgb(1,0,0,0.5), rgb(1,0,0,0.5),
+                                                                              rgb(0,0,1,0.5), rgb(0,0,1,0.5)), pt.cex=2, pch=15 )
+```
+Between Rotterdam and Amsterdam, Rotterdam has the smallest standard deviation meaning that values are more tightly clustered around the mean. Amsterdam has a greater range of values which are spread out, this is also shown on the plot.
+
+To check for skewness the mean, mode and median were all calculated with *mean()* and *median()* while for mode the function **getmode** was created since R doesn't have it built in by standard.
+
+the library *e1071* was utilized to calculate the skewness of both data frames.
+
+```{r}
+library(e1071) 
+
+getmode <- function(v) {
+  mode <- unique(v)
+  mode[which.max(tabulate(match(v, mode)))]
+}
+
+skewone <- skewness(Rotter$house_price)  
+skewone <- round(skewone, digits=2)
+
+skewtwo <- skewness(Amster$house_price)
+skewtwo <- round(skewtwo, digits=2)
+
+meanone <- mean(Rotter$house_price)
+meanone <- round(meanone, digits=2)
+
+meantwo <- mean(Amster$house_price)
+meantwo <- round(meantwo, digits=2)
+
+modeone <- getmode(Rotter$house_price)
+modetwo <- getmode(Amster$house_price)
+
+medianone <- median(Rotter$house_price)
+mediantwo <- median(Amster$house_price)
+```
+
+```{r, echo=FALSE}
+message_dist1 <- paste("Rotterdam mean/mode/median/skewness ",modeone, "/", medianone, "/",meanone, "/", skewone)
+message_dist1
+message_dist2 <- paste("Amsterdam mean/mode/median/skewness ",modetwo, "/", mediantwo, "/", meantwo,"/",skewtwo)
+message_dist2
+```
+
+Therefore it was concluded that both Rotterdam and Amsterdam have a positive skewness which is also visualized in the plot, Amsterdam has a higher skew with that of 5.01 then Rotterdam with 1.96.
+
+### Regression
+
+Regression was used to infer predictions for various continuous quantitative variables with respect to a discrete qualitative variable, city, specifically for Amsterdam and Rotterdam.
+
+Initially the population was filtered according to city for Amsterdam and Rotterdam. A scatter plot was created to display the relationship and the correlation calculated between two continuous qualitative variables for the respective cities. This was carried out for:
+
++   bedrooms VS surface.
++   house_price VS surface.
+
+For Rotterdam:
+```{r}
+#Uses population
+#(1) the typical m2 apartment with 3 bedrooms in Amsterdam and Rotterdam;
+rotterdamSurface<-Rent %>% filter(city=="Rotterdam")
+
+plot(rotterdamSurface$bedrooms, rotterdamSurface$surface, xlab="Bedrooms", ylab="Surface Area", main="Bedrooms vs Surface Area in Rotterdam")
+cor(rotterdamSurface$surface,rotterdamSurface$bedrooms)#0.7328429
+
+```
+A resulting correlation of 0.7328429 indicated that the variables are dependent meaning that a linear model can be created and regression utilised to predict the surface area for a property with three bedrooms in Rotterdam. A scatter plot including the linear model displays the relationship and the result of the prediction is in the code below.
+
+```{r}
+rotterSurfaceRegress<-rotterdamSurface$surface
+rotterBedroomsRegress<-rotterdamSurface$bedrooms
+rotterDataFrame<-data.frame(rotterBedroomsRegress,rotterSurfaceRegress)
+rotterRegres<-lm(formula = rotterSurfaceRegress~rotterBedroomsRegress, data = rotterDataFrame)
+ggplot(rotterdamSurface, aes(x=rotterBedroomsRegress, y=rotterSurfaceRegress)) + geom_point() + geom_smooth(method = "lm")
+summary(rotterRegres)
+print(rotterRegres)
+
+#Manual way to predict: surfaceArea = 10.93 + (23.72*bedrooms)
+rotterPredict<-predict(rotterRegres, list(rotterBedroomsRegress = 3))
+rotterPredict#82.1 m^2
+```
+
+For Amsterdam:
+```{r}
+amsterdamSurface<-Rent %>% filter(city=="Amsterdam")
+
+plot(amsterdamSurface$bedrooms, amsterdamSurface$surface, xlab="Bedrooms", ylab="Surface Area", main="Bedrooms vs Surface Area in Amsterdam")
+cor(amsterdamSurface$surface,amsterdamSurface$bedrooms)#0.7682397
+```
+A resulting correlation of 0.7682397 indicated that the variables are dependent meaning that a linear model can be created and regression utilised to predict the surface area for a property with three bedrooms in Amsterdam. A scatter plot including the linear model displays the relationship and the result of the prediction is in the code below.
+
+```{r}
+amsterSurfaceRegress<-amsterdamSurface$surface
+amsterBedroomsRegress<-amsterdamSurface$bedrooms
+amsterDataFrame<-data.frame(amsterBedroomsRegress,amsterSurfaceRegress)
+amsterRegres<-lm(formula = amsterSurfaceRegress~amsterBedroomsRegress, data = amsterDataFrame)
+ggplot(amsterdamSurface, aes(x=amsterBedroomsRegress, y=amsterSurfaceRegress)) + geom_point() + geom_smooth(method = "lm")
+summary(amsterRegres)
+print(amsterRegres)
+
+#Manual way to predict: surfaceArea = -2.2210 + (28.6869*bedrooms)
+amsterPredict<-predict(amsterRegres, list(amsterBedroomsRegress = 3))
+amsterPredict #83.84779 m^2
+```
+
+For Rotterdam:
+```{r}
+#(2) the monthly rent for a 125 m2 apartment in Amsterdam and Rotterdam 
+
+rotterdamPrice<-Rent %>% filter(city=="Rotterdam")
+
+plot(rotterdamPrice$house_price, rotterdamPrice$surface, xlab="Price", ylab="Surface Area", main="Price vs Surface Area in Rotterdam")
+cor(rotterdamPrice$surface,rotterdamPrice$house_price)#0.7922818
+```
+A resulting correlation of 0.7922818 indicated that the variables are dependent meaning that a linear model can be created and regression utilised to predict the monthly rent for a property with a surface area of 125m^2 in Rotterdam. A scatter plot including the linear model displays the relationship and the result of the prediction is in the code below.
+
+```{r}
+rotterPriceRegress<-rotterdamPrice$house_price
+rotterSurfacePrice<-rotterdamPrice$surface
+rotterRegresPrice<-lm(rotterPriceRegress~rotterSurfacePrice)
+ggplot(rotterdamPrice, aes(x=rotterPriceRegress, y=rotterSurfacePrice)) + geom_point() + geom_smooth(method = "lm")
+summary(rotterRegresPrice)
+print(rotterRegresPrice) #Price = 447.79 + (11.78*surface)
+
+rotterPredictPrice<-predict(rotterRegresPrice, list(rotterSurfacePrice = 125))
+rotterPredictPrice #1920.751
+```
+
+For Amsterdam:
+```{r}
+amsterdamPrice<-Rent %>% filter(city=="Amsterdam")
+
+plot(amsterdamPrice$house_price, amsterdamPrice$surface, xlab="Price", ylab="Surface Area", main="Price vs Surface Area in Amsterdam")
+cor(amsterdamPrice$surface,amsterdamPrice$house_price)#0.821016
+```
+A resulting correlation of 0.821016 indicated that the variables are dependent meaning that a linear model can be created and regression utilised to predict the monthly rent for a property with a surface area of 125m^2 in Amsterdam. A scatter plot including the linear model displays the relationship and the result of the prediction is in the code below.
+
+```{r}
+amsterPriceRegress<-amsterdamPrice$house_price
+amsterSurfacePrice<-amsterdamPrice$surface
+amsterRegresPrice<-lm(amsterPriceRegress~amsterSurfacePrice)
+ggplot(amsterdamPrice, aes(x=amsterPriceRegress, y=amsterSurfacePrice)) + geom_point() + geom_smooth(method = "lm")
+summary(amsterRegresPrice)
+print(amsterRegresPrice) #Price = 361.7226 + (19.7309*surface)
+
+amsterPredictPrice<-predict(amsterRegresPrice, list(amsterSurfacePrice = 125))
+amsterPredictPrice #2828.084
+```
